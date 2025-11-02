@@ -1,0 +1,8 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+printf "\n➡️  Running lint-staged (format + eslint on staged files)…\n"
+npx --no-install lint-staged || exit 1
+
+printf "\n➡️  Running unit tests…\n"
+npm test || exit 1

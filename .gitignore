@@ -32,6 +32,9 @@ dist/
 build/
 *.tgz
 
+# TypeScript
+*.tsbuildinfo
+
 # Test coverage
 coverage/
 .nyc_output/

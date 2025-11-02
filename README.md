@@ -1,167 +1,146 @@
-# Azure Voice Live Proxy
+# Azure AI Foundry Voice Live Proxy
 
-**Secure WebSocket proxy server for Azure Voice Live API with comprehensive authentication support.**
+[![CI](https://github.com/iLoveAgents/azure-voice-live-proxy/actions/workflows/ci.yml/badge.svg)](https://github.com/iLoveAgents/azure-voice-live-proxy/actions/workflows/ci.yml)
+[![Tests](https://github.com/iLoveAgents/azure-voice-live-proxy/actions/workflows/tests.yml/badge.svg)](https://github.com/iLoveAgents/azure-voice-live-proxy/actions/workflows/tests.yml)
+[![CodeQL](https://github.com/iLoveAgents/azure-voice-live-proxy/actions/workflows/codeql.yml/badge.svg)](https://github.com/iLoveAgents/azure-voice-live-proxy/actions/workflows/codeql.yml)
 
-Generic proxy that handles Voice, Avatar, and Agent Service scenarios with both API key and MSAL token authentication.
+Secure WebSocket proxy for Azure AI Foundry Voice Live (Voice, Avatar, Agent). Keeps credentials server-side, enforces security (CORS, rate limits, headers), and forwards messages transparently.
 
-## Why Use This Proxy?
+This proxy is required for browser-based apps because browser WebSockets cannot send Authorization headers, and Azure AI Foundry's Realtime endpoints do not accept tokens via the query string; the proxy injects credentials server-side and forwards the stream securely.
 
-### Security Problem: API Keys in Browser
+## Quick start (local)
 
-**Never embed API keys in browser code:**
-- API keys in `.env` files get bundled into browser JavaScript
-- Anyone can inspect network tab and steal your keys
-- Keys can be extracted from source code
+Prerequisites: Node.js 18+, Azure subscription + Azure AI Foundry (hub/project). Setup: <https://learn.microsoft.com/azure/ai-studio/>
 
-### Solution: Backend Proxy
+1. Install
 
-This proxy secures your API keys server-side and supports multiple authentication methods:
+- WS: ws://localhost:8080/ws
+- Health: <http://localhost:8080/health>
 
-| Authentication Method | Security | Auditing | Use Case |
-|----------------------|----------|----------|----------|
-| API keys in browser | Insecure | No | Quick demos only |
-| Backend Proxy + API Key | Good | No | Production (shared access) |
-| Backend Proxy + MSAL | Best | Yes | Enterprise (user-level auth) |
+## Configuration (env)
 
-## Features
-
-- **All Azure Voice Live Scenarios**: Voice chat, Avatar video, Agent Service
-- **Multiple Auth Methods**: API key (shared) or MSAL tokens (per-user)
-- **Zero Configuration**: Works out of the box with environment variables
-- **Transparent Proxy**: Bidirectional WebSocket message forwarding
-- **Production Ready**: Clean error handling and logging
-- **Lightweight**: Only 148 lines of code, 2 dependencies
-
-## Installation
+Copy from `.env.example`. Common settings:
 
 ```bash
-npm install @iloveagents/azure-voice-live-proxy
-```
-
-Or run directly with npx:
-
-```bash
-npx @iloveagents/azure-voice-live-proxy
-```
-
-## Quick Start
-
-### 1. Configure Environment
-
-Create `.env` file:
-
-```bash
-# Required
-AZURE_AI_FOUNDRY_RESOURCE=your-resource-name
-
-# For Voice/Avatar with API key
-AZURE_SPEECH_KEY=your-api-key
-
-# For Agent Service (optional)
-AGENT_ID=your-agent-id
-PROJECT_NAME=your-project-name
-
-# Server config (optional)
+# Server
 PORT=8080
 API_VERSION=2025-10-01
+
+# Security
+ALLOWED_ORIGINS=http://localhost:3000
+RATE_LIMIT_WINDOW_MS=60000
+RATE_LIMIT_MAX_REQUESTS=100
+MAX_CONNECTIONS=1000
+
+# Azure (required)
+AZURE_AI_FOUNDRY_RESOURCE=your-resource-name
+
+# Standard mode (optional if client sends MSAL token)
+AZURE_SPEECH_KEY=your-api-key
+
+# Telemetry (optional)
+# APPLICATIONINSIGHTS_CONNECTION_STRING=InstrumentationKey=...;IngestionEndpoint=...
 ```
 
-### 2. Start Proxy Server
+## Run with Docker
+
+Using docker-compose (recommended):
 
 ```bash
-# Option 1: Using npx
-npx @iloveagents/azure-voice-live-proxy
-
-# Option 2: After npm install
-npm start
-
-# Option 3: Development mode with auto-reload
-npm run dev
+cp .env.example .env
+docker-compose up -d
+docker-compose logs -f
+# docker-compose down
 ```
 
-### 3. Connect from Browser
+Using Docker directly:
 
-**Voice/Avatar with API Key (Anonymous):**
-```typescript
-import { useVoiceLive, createVoiceLiveConfig } from '@iloveagents/azure-voice-live-react';
-
-const config = createVoiceLiveConfig('default', {
-  connection: {
-    customWebSocketUrl: 'ws://localhost:8080?mode=standard&model=gpt-realtime',
-  }
-});
-
-const { connect, videoStream } = useVoiceLive(config);
+```bash
+npm run docker:build
+npm run docker:run
+# or
+docker build -t azure-voice-live-proxy .
+docker run -p 8080:8080 --env-file .env azure-voice-live-proxy
 ```
 
-**Voice/Avatar with MSAL Token (User-level):**
-```typescript
-const token = await msalInstance.acquireTokenSilent({
-  scopes: ['https://cognitiveservices.azure.com/.default']
-});
+### Docker health checks
 
-const config = createVoiceLiveConfig('default', {
-  connection: {
-    customWebSocketUrl: `ws://localhost:8080?mode=standard&model=gpt-realtime&token=${token.accessToken}`,
-  }
-});
+- App endpoint: `GET /health`
+- Dockerfile and docker-compose include a `HEALTHCHECK` probing `/health`.
+- Quick verify:
+
+```sh
+curl http://localhost:8080/health
 ```
 
-**Agent Service with MSAL Token:**
-```typescript
-const token = await msalInstance.acquireTokenSilent({
-  scopes: ['https://ai.azure.com/.default']
-});
+## Pull and run from Azure Container Registry (ACR)
 
-const config = createVoiceLiveConfig('agent', {
-  connection: {
-    customWebSocketUrl: `ws://localhost:8080?mode=agent&token=${token.accessToken}`,
-  }
-});
+Public image:
+
+```bash
+docker pull iloveagents.azurecr.io/azure-voice-live-proxy:main
+docker run -p 8080:8080 \
+  -e AZURE_AI_FOUNDRY_RESOURCE=your-resource \
+  -e AZURE_SPEECH_KEY=your-key \
+  iloveagents.azurecr.io/azure-voice-live-proxy:main
 ```
 
-## Usage Scenarios
+## Host on Microsoft Azure
 
-### Voice & Avatar - Option 1: API Key (Shared Access)
+### Option 1: Azure Container Apps
 
-**Use when:** Quick demos, internal tools, shared access OK
+## Advanced Configuration
+
+### Authentication Options
+
+**API Key (shared access):**
+
+Use when: Quick demos, internal tools, shared access OK
 
 **Frontend:**
+
 ```typescript
-customWebSocketUrl: 'ws://localhost:8080?mode=standard&model=gpt-realtime'
+// Mode is automatically detected as "standard" (no agentId/projectName)
+proxyUrl: "ws://localhost:8080/ws?model=gpt-realtime";
 ```
 
 **Backend (.env):**
+
 ```bash
 AZURE_AI_FOUNDRY_RESOURCE=your-resource
 AZURE_SPEECH_KEY=your-api-key  # Secured server-side
 ```
 
 **Benefits:**
+
 - Simple setup
 - No user authentication needed
 - Good for internal applications
 
-### Voice & Avatar - Option 2: MSAL Token (User-Level Auth)
+**MSAL Token (user-level auth):**
 
-**Use when:** Enterprise apps, need per-user auditing, SSO integration
+Use when: Enterprise apps, need per-user auditing, SSO integration
 
 **Frontend:**
+
 ```typescript
 const token = await msalInstance.acquireTokenSilent({
-  scopes: ['https://cognitiveservices.azure.com/.default']
+  scopes: ["https://ai.azure.com/.default"],
 });
 
-customWebSocketUrl: `ws://localhost:8080?mode=standard&model=gpt-realtime&token=${token.accessToken}`
+// Mode is automatically detected as "standard" (no agentId/projectName)
+proxyUrl: `ws://localhost:8080/ws?model=gpt-realtime&token=${token.accessToken}`;
 ```
 
 **Backend (.env):**
+
 ```bash
 AZURE_AI_FOUNDRY_RESOURCE=your-resource
 # No API key needed - uses user's MSAL token
 ```
 
 **Benefits:**
+
 - No API keys stored anywhere
 - Each user authenticated individually
 - Tokens auto-expire (1 hour)
@@ -169,162 +148,128 @@ AZURE_AI_FOUNDRY_RESOURCE=your-resource
 - Enterprise SSO support
 
 **Setup required:**
-1. Azure App Registration with scope: `https://cognitiveservices.azure.com/.default`
+
+1. Azure App Registration with scope: `https://ai.azure.com/.default`
 2. Assign "Cognitive Services User" role on AI Foundry resource
 3. Install `@azure/msal-react` and configure MsalProvider
 
-### Agent Service (MSAL Required)
+**Agent Mode (Azure AI Foundry Agent Service):**
+
+Use when: Using custom agents built in Azure AI Foundry
 
 **Frontend:**
+
 ```typescript
 const token = await msalInstance.acquireTokenSilent({
-  scopes: ['https://ai.azure.com/.default']
+  scopes: ["https://ai.azure.com/.default"],
 });
 
-customWebSocketUrl: `ws://localhost:8080?mode=agent&token=${token.accessToken}`
+// Mode is automatically detected as "agent" (agentId and projectName present)
+proxyUrl: `ws://localhost:8080/ws?agentId=asst_abc123&projectName=my-project&token=${token.accessToken}`;
 ```
 
 **Backend (.env):**
+
 ```bash
 AZURE_AI_FOUNDRY_RESOURCE=your-resource
-AGENT_ID=your-agent-id
-PROJECT_NAME=your-project
+# No API key needed - uses user's MSAL token
+# agentId and projectName come from client (not .env)
 ```
 
-**Note:** Agent Service ONLY supports MSAL authentication (no API key option)
+**Benefits:**
 
-## Production Deployment
+- User-level authentication with custom agents
+- Per-user agent access control
+- MSAL token auto-expires (1 hour)
+- Transparent proxy - client controls agent selection
 
-### Option 1: PM2 (Node.js Process Manager)
+**Requirements:**
+
+1. Azure App Registration with scope: `https://ai.azure.com/.default`
+2. User has access to the specified agent in Azure AI Foundry
+3. Client must provide both `agentId` and `projectName` in URL
+
+### Deployment Options
+
+**PM2:**
 
 ```bash
 npm install -g pm2
-pm2 start index.js --name azure-voice-proxy
+pm2 start dist/index.js --name azure-voice-proxy
 pm2 save
 pm2 startup
 ```
 
-### Option 2: Docker
-
-Create `Dockerfile`:
-
-```dockerfile
-FROM node:18-alpine
-WORKDIR /app
-COPY package*.json ./
-RUN npm ci --production
-COPY . .
-EXPOSE 8080
-CMD ["node", "index.js"]
-```
-
-Build and run:
+**Docker:**
 
 ```bash
-docker build -t azure-voice-proxy .
-docker run -p 8080:8080 --env-file .env azure-voice-proxy
+cp .env.example .env
+docker-compose up -d
 ```
 
-### Option 3: Azure Container Apps
+See "Run with Docker" section above for details.
 
-```bash
-az containerapp create \
-  --name azure-voice-proxy \
-  --resource-group myResourceGroup \
-  --environment myEnvironment \
-  --image ghcr.io/iloveagents/azure-voice-live-proxy:latest \
-  --target-port 8080 \
-  --ingress external \
-  --env-vars \
-    AZURE_AI_FOUNDRY_RESOURCE=your-resource \
-    AZURE_SPEECH_KEY=your-key
-```
+**Azure:** See "Host on Microsoft Azure" section above for Container Apps, App Service, and Container Instances.
 
-### Option 4: Cloudflare Workers
-
-Not recommended for this proxy due to WebSocket limitations. Use Node.js-based deployment instead.
-
-## Security Best Practices
-
-1. **Never commit `.env`** - add to `.gitignore`
-2. **Use WSS in production** - secure WebSocket (TLS/SSL)
-3. **Add rate limiting** - prevent abuse
-4. **Validate tokens** - especially for agent mode
-5. **Use environment-specific configs** - dev/staging/prod
-6. **Enable CORS restrictions** - limit allowed origins
-7. **Monitor usage** - track API consumption
-8. **Rotate keys regularly** - automated key rotation
-
-## Configuration Reference
+## Reference
 
 ### Environment Variables
 
-| Variable | Required | Description | Default |
-|----------|----------|-------------|---------|
-| `PORT` | No | Server port | 8080 |
-| `API_VERSION` | No | Azure API version | 2025-10-01 |
-| `AZURE_AI_FOUNDRY_RESOURCE` | Yes | Azure resource name | - |
-| `AZURE_SPEECH_KEY` | Conditional | API key for Voice/Avatar | - |
-| `AGENT_ID` | No | Agent Service ID | - |
-| `PROJECT_NAME` | No | Agent project name | - |
+| Variable                    | Required    | Description                  | Default                 |
+| --------------------------- | ----------- | ---------------------------- | ----------------------- |
+| `PORT`                      | No          | Server port                  | 8080                    |
+| `API_VERSION`               | No          | Azure API version            | 2025-10-01              |
+| `AZURE_AI_FOUNDRY_RESOURCE` | Yes         | Azure resource name          | -                       |
+| `AZURE_SPEECH_KEY`          | Conditional | API key for Voice/Avatar     | -                       |
+| `ALLOWED_ORIGINS`           | No          | Comma-separated CORS origins | `http://localhost:3000` |
+| `RATE_LIMIT_WINDOW_MS`      | No          | Rate limit time window (ms)  | 60000                   |
+| `RATE_LIMIT_MAX_REQUESTS`   | No          | Max requests per window      | 100                     |
+| `MAX_CONNECTIONS`           | No          | Max concurrent connections   | 1000                    |
 
-### Query Parameters
+### WebSocket Query Parameters
 
-| Parameter | Required | Description | Example |
-|-----------|----------|-------------|---------|
-| `mode` | No | Connection mode | `standard` or `agent` |
-| `model` | No | Model name | `gpt-realtime` |
-| `token` | Conditional | MSAL access token | From Azure AD |
-| `agentId` | No | Override AGENT_ID from env | Custom agent |
-| `projectName` | No | Override PROJECT_NAME from env | Custom project |
+**Mode Detection:** Mode is automatically detected - Agent mode when `agentId` and `projectName` are present, otherwise Standard mode.
 
-## Troubleshooting
+| Parameter     | Required    | Description                                          | Example        |
+| ------------- | ----------- | ---------------------------------------------------- | -------------- |
+| `model`       | No          | Model name (Standard mode)                           | `gpt-realtime` |
+| `token`       | Conditional | MSAL access token                                    | From Azure AD  |
+| `agentId`     | Conditional | Agent ID (triggers Agent mode, requires projectName) | `asst_123xyz`  |
+| `projectName` | Conditional | Project name (triggers Agent mode, requires agentId) | `my-project`   |
 
-**Connection fails:**
-- Verify `.env` has correct values
-- Check proxy is running: `curl http://localhost:8080`
-- Check backend logs for errors
+### API Endpoints
 
-**"Missing token parameter":**
-- Agent mode requires MSAL token in query param
-- Standard mode doesn't need token if AZURE_SPEECH_KEY is set
+| Endpoint  | Method | Description                 |
+| --------- | ------ | --------------------------- |
+| `/`       | GET    | API information and version |
+| `/health` | GET    | Health check endpoint       |
+| `/ws`     | WS     | WebSocket proxy connection  |
 
-**"AZURE_SPEECH_KEY required":**
-- Standard mode needs API key in backend .env OR MSAL token from client
-- Make sure you copied .env.example to .env
+**Health Check Response:**
 
-**Double audio playback:**
-- This is a client-side issue, not proxy related
-- Check `@iloveagents/azure-voice-live-react` documentation
+```json
+{
+  "status": "ok",
+  "activeConnections": 5,
+  "maxConnections": 1000,
+  "timestamp": "2025-01-15T10:30:00.000Z"
+}
+```
 
-## Examples
+**Common errors:**
 
-See the [@iloveagents/azure-voice-live-react](https://github.com/iLoveAgents/azure-voice-live-react) library for complete frontend examples:
-
-- Voice Chat - Simple
-- Voice Chat - Advanced
-- Voice Chat - Secure Proxy (API Key)
-- Voice Chat - Secure Proxy (MSAL)
-- Avatar - Simple
-- Avatar - Advanced
-- Avatar - Secure Proxy (API Key)
-- Avatar - Secure Proxy (MSAL)
-- Agent Service with MSAL
-
-## Contributing
-
-Contributions welcome! Please see [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines.
+- Connection fails: Verify `.env` values and check `curl http://localhost:8080/health`
+- "Blocked by CORS": Add origin to `ALLOWED_ORIGINS`
+- "Too many requests": Rate limit exceeded, adjust limits or wait
+- "Missing token parameter": Agent mode requires MSAL token
+- "AZURE_SPEECH_KEY required": Standard mode needs API key OR MSAL token
 
 ## License
 
-MIT © [iloveagents](https://github.com/iloveagents)
+MIT
 
-## Support
+Made with 💜 [iLoveAgents](https://iloveagents.ai)
 
-- **Issues**: [GitHub Issues](https://github.com/iLoveAgents/azure-voice-live-proxy/issues)
-- **React Library**: [@iloveagents/azure-voice-live-react](https://github.com/iLoveAgents/azure-voice-live-react)
-- **Azure Docs**: [Azure Voice Live](https://learn.microsoft.com/azure/ai-services/speech-service/voice-live)
+## Contributing
 
----
-
-**Built by [iloveagents](https://github.com/iloveagents)**
+PRs welcome. This README focuses on running and configuring the proxy; CI/workflow details are intentionally omitted.
