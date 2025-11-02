@@ -1,0 +1,51 @@
+{
+  "name": "@iloveagents/azure-voice-live-proxy",
+  "version": "1.0.0",
+  "description": "WebSocket proxy server for Azure Voice Live API with secure authentication",
+  "keywords": [
+    "azure",
+    "voice",
+    "live",
+    "proxy",
+    "websocket",
+    "avatar",
+    "agent",
+    "msal",
+    "authentication"
+  ],
+  "author": "iloveagents",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/iLoveAgents/azure-voice-live-proxy.git"
+  },
+  "homepage": "https://github.com/iLoveAgents/azure-voice-live-proxy#readme",
+  "bugs": {
+    "url": "https://github.com/iLoveAgents/azure-voice-live-proxy/issues"
+  },
+  "main": "index.js",
+  "type": "module",
+  "bin": {
+    "azure-voice-live-proxy": "./bin/cli.js"
+  },
+  "files": [
+    "index.js",
+    "bin/",
+    "LICENSE",
+    "README.md",
+    ".env.example"
+  ],
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.0",
+    "ws": "^8.18.0"
+  },
+  "peerDependencies": {},
+  "devDependencies": {}
+}
